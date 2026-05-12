@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/transcribe-google.js": {
+      "maxDuration": 30
+    }
+  }
+}
