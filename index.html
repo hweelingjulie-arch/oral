@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Chinese Oral AI Marker</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+<style>
+:root {
+  --bg: #f3f4f6;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #64748b;
+  --primary: #111827;
+  --danger: #dc2626;
+  --secondary: #e5e7eb;
+  --success-bg: #dcfce7;
+  --success-text: #166534;
+  --error-bg: #fee2e2;
+  --error-text: #991b1b;
+  --warning-bg: #fff7ed;
+  --warning-text: #9a3412;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: var(--bg);
+  margin: 0;
+  padding: 28px;
+  color: var(--text);
+}
+
+.container {
+  max-width: 1100px;
+  margin: auto;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 24px;
+  margin-bottom: 22px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+h1, h2, h3 {
+  margin-top: 0;
+}
+
+textarea {
+  width: 100%;
+  min-height: 130px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  padding: 14px;
+  font-size: 18px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-right: 8px;
+  margin-top: 10px;
+  font-size: 15px;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary {
+  background: var(--primary);
+  color: white;
+}
+
+.danger {
+  background: var(--danger);
+  color: white;
+}
+
+.secondary {
+  background: var(--secondary);
+  color: #111827;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.result-box {
+  background: #f1f5f9;
+  padding: 20px;
+  border-radius: 14px;
+  text-align: center;
+}
+
+.big {
+  font-size: 32px;
+  font-weight: bold;
+}
+
+.small {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  padding: 12px;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+
+.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+  padding: 12px;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+
+.warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  padding: 12px;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  font-size: 14px;
+}
+
+th {
+  background: #f1f5f9;
+}
+
+.status-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+@media(max-width: 800px) {
+  body {
+    padding: 14px;
+  }
+
+  .result-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="card">
+  <h1>自动华文口试 AI 评分系统</h1>
+  <p>Public deployable version. The Google API key is hidden on the server, not inside this HTML.</p>
+  <div class="warning">
+    For best privacy, do not use students’ full names in recordings or passage labels.
+  </div>
+</div>
+
+<div class="card">
+  <h2>1. Upload Rubric Excel</h2>
+  <p>Excel columns: <b>min, max, marks, band, feedback</b></p>
+  <input type="file" id="rubricFile" accept=".xlsx,.xls,.csv">
+  <button class="secondary" onclick="downloadTemplate()">Download Rubric Template</button>
+  <div id="rubricStatus"></div>
+  <div id="rubricPreview"></div>
+</div>
+
+<div class="card">
+  <h2>2. Reading Passage</h2>
+  <textarea id="passage">小明早上来到学校，看见老师正在门口迎接同学。他有礼貌地向老师问好，然后走进教室准备上课。</textarea>
+</div>
+
+<div class="card">
+  <h2>3. Student Recording</h2>
+
+  <div class="status-row">
+    <span class="pill" id="recordingPill">Ready</span>
+  </div>
+
+  <button class="primary" id="startBtn" onclick="startRecording()">Start Recording</button>
+  <button class="danger" id="stopBtn" onclick="stopRecording()" disabled>Stop Recording</button>
+  <button class="secondary" onclick="resetAll()">Reset</button>
+
+  <div id="recordingStatus"></div>
+
+  <h3>Transcript</h3>
+  <textarea id="transcript" placeholder="Transcript will appear here after Google Speech-to-Text processes the audio. You can also type manually."></textarea>
+
+  <button class="primary" onclick="markReading()">Generate Marks</button>
+</div>
+
+<div class="card">
+  <h2>4. AI Results</h2>
+
+  <div class="result-grid">
+    <div class="result-box">
+      <div class="big" id="accuracy">0%</div>
+      <div class="small">Accuracy</div>
+    </div>
+
+    <div class="result-box">
+      <div class="big" id="score">0</div>
+      <div class="small">Marks</div>
+    </div>
+
+    <div class="result-box">
+      <div class="big" id="band">-</div>
+      <div class="small">Band</div>
+    </div>
+
+    <div class="result-box">
+      <div class="big" id="errors">0</div>
+      <div class="small">Estimated Errors</div>
+    </div>
+  </div>
+
+  <h3>Feedback</h3>
+  <p id="feedback">No feedback yet.</p>
+
+  <h3>Cleaned Comparison</h3>
+  <p><b>Expected:</b></p>
+  <p id="expectedText"></p>
+
+  <p><b>Student Read:</b></p>
+  <p id="spokenText"></p>
+</div>
+
+</div>
+
+<script>
+let rubricRows = [];
+let mediaRecorder;
+let audioChunks = [];
+let streamRef = null;
+
+document.getElementById("rubricFile").addEventListener("change", handleRubricUpload);
+
+function setStatus(message, type = "success") {
+  document.getElementById("recordingStatus").innerHTML =
+    `<div class="${type}">${message}</div>`;
+}
+
+function setPill(text) {
+  document.getElementById("recordingPill").innerText = text;
+}
+
+function handleRubricUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    rubricRows = XLSX.utils.sheet_to_json(sheet);
+
+    document.getElementById("rubricStatus").innerHTML =
+      `<div class="success">Rubric loaded successfully. ${rubricRows.length} rows found.</div>`;
+
+    previewRubric();
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function previewRubric() {
+  if (!rubricRows.length) return;
+
+  let html = `
+    <table>
+      <tr>
+        <th>Min</th>
+        <th>Max</th>
+        <th>Marks</th>
+        <th>Band</th>
+        <th>Feedback</th>
+      </tr>
+  `;
+
+  rubricRows.forEach(row => {
+    html += `
+      <tr>
+        <td>${row.min ?? row.Min ?? row["最低准确率"] ?? ""}</td>
+        <td>${row.max ?? row.Max ?? row["最高准确率"] ?? ""}</td>
+        <td>${row.marks ?? row.Marks ?? row["分数"] ?? ""}</td>
+        <td>${row.band ?? row.Band ?? row["等级"] ?? ""}</td>
+        <td>${row.feedback ?? row.Feedback ?? row["评语"] ?? ""}</td>
+      </tr>
+    `;
+  });
+
+  html += `</table>`;
+  document.getElementById("rubricPreview").innerHTML = html;
+}
+
+function downloadTemplate() {
+  const template = [
+    {
+      min: 90,
+      max: 100,
+      marks: 10,
+      band: "优秀",
+      feedback: "朗读非常准确，错读和漏读极少。"
+    },
+    {
+      min: 75,
+      max: 89,
+      marks: 8,
+      band: "良好",
+      feedback: "朗读整体不错，有少量错读或漏读。"
+    },
+    {
+      min: 60,
+      max: 74,
+      marks: 6,
+      band: "及格",
+      feedback: "能读出大部分内容，但准确度需要加强。"
+    },
+    {
+      min: 0,
+      max: 59,
+      marks: 4,
+      band: "需加强",
+      feedback: "错读、漏读较多，需要分句练习。"
+    }
+  ];
+
+  const worksheet = XLSX.utils.json_to_sheet(template);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Rubric");
+  XLSX.writeFile(workbook, "Chinese_Oral_Rubric_Template.xlsx");
+}
+
+async function startRecording() {
+  audioChunks = [];
+
+  try {
+    streamRef = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    const options = {};
+    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+      options.mimeType = "audio/webm;codecs=opus";
+    }
+
+    mediaRecorder = new MediaRecorder(streamRef, options);
+
+    mediaRecorder.ondataavailable = event => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data);
+      }
+    };
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(audioChunks, { type: "audio/webm" });
+      const base64 = await blobToBase64(blob);
+      await transcribeAudio(base64);
+
+      if (streamRef) {
+        streamRef.getTracks().forEach(track => track.stop());
+      }
+    };
+
+    mediaRecorder.start();
+
+    document.getElementById("startBtn").disabled = true;
+    document.getElementById("stopBtn").disabled = false;
+    setPill("Recording");
+    setStatus("Recording started. Ask the student to read now.");
+
+  } catch (error) {
+    setStatus(`Microphone error: ${error.message}`, "error");
+  }
+}
+
+async function stopRecording() {
+  if (!mediaRecorder) {
+    setStatus("Please start recording first.", "error");
+    return;
+  }
+
+  if (mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+
+  document.getElementById("startBtn").disabled = false;
+  document.getElementById("stopBtn").disabled = true;
+  setPill("Processing");
+  setStatus("Recording stopped. Sending audio to Speech-to-Text...");
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      resolve(reader.result.split(",")[1]);
+    };
+
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function transcribeAudio(base64Audio) {
+  try {
+    const response = await fetch("/api/transcribe-google", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        audio: base64Audio,
+        languageCode: "cmn-Hans-CN"
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Speech-to-Text failed.");
+    }
+
+    document.getElementById("transcript").value = data.transcript || "";
+    setPill("Completed");
+    setStatus("Transcription completed. You can now generate marks.");
+
+  } catch (error) {
+    setPill("Error");
+    setStatus(error.message, "error");
+  }
+}
+
+function normalizeChinese(text) {
+  return (text || "")
+    .replace(/[\s\p{P}\p{S}]/gu, "")
+    .replace(/[，。？！、；：“”‘’（）《》]/g, "")
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const arrA = Array.from(a);
+  const arrB = Array.from(b);
+
+  const dp = Array.from(
+    { length: arrA.length + 1 },
+    () => Array(arrB.length + 1).fill(0)
+  );
+
+  for (let i = 0; i <= arrA.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= arrB.length; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= arrA.length; i++) {
+    for (let j = 1; j <= arrB.length; j++) {
+      const cost = arrA[i - 1] === arrB[j - 1] ? 0 : 1;
+
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[arrA.length][arrB.length];
+}
+
+function markReading() {
+  const expected = normalizeChinese(document.getElementById("passage").value);
+  const spoken = normalizeChinese(document.getElementById("transcript").value);
+
+  if (!expected || !spoken) {
+    alert("Please input passage and transcript first.");
+    return;
+  }
+
+  const errors = levenshtein(expected, spoken);
+
+  const accuracy = Math.max(
+    0,
+    Math.round((1 - errors / expected.length) * 100)
+  );
+
+  document.getElementById("accuracy").innerText = accuracy + "%";
+  document.getElementById("errors").innerText = errors;
+  document.getElementById("expectedText").innerText = expected;
+  document.getElementById("spokenText").innerText = spoken;
+
+  const result = getRubricResult(accuracy);
+
+  document.getElementById("score").innerText = result.marks;
+  document.getElementById("band").innerText = result.band;
+  document.getElementById("feedback").innerText = result.feedback;
+}
+
+function getRubricResult(accuracy) {
+  const parsedRubric = rubricRows.map(row => ({
+    min: Number(row.min ?? row.Min ?? row["最低准确率"]),
+    max: Number(row.max ?? row.Max ?? row["最高准确率"]),
+    marks: Number(row.marks ?? row.Marks ?? row["分数"]),
+    band: row.band ?? row.Band ?? row["等级"],
+    feedback: row.feedback ?? row.Feedback ?? row["评语"]
+  })).filter(row =>
+    !Number.isNaN(row.min) &&
+    !Number.isNaN(row.max) &&
+    !Number.isNaN(row.marks)
+  );
+
+  const matched = parsedRubric.find(row =>
+    accuracy >= row.min && accuracy <= row.max
+  );
+
+  if (matched) {
+    return {
+      marks: matched.marks,
+      band: matched.band || `${matched.min}-${matched.max}%`,
+      feedback: matched.feedback || "根据上传的评分标准自动评分。"
+    };
+  }
+
+  if (accuracy >= 90) {
+    return {
+      marks: 10,
+      band: "优秀",
+      feedback: "朗读非常准确，错读和漏读极少。"
+    };
+  }
+
+  if (accuracy >= 75) {
+    return {
+      marks: 8,
+      band: "良好",
+      feedback: "朗读整体不错，有少量错读或漏读。"
+    };
+  }
+
+  if (accuracy >= 60) {
+    return {
+      marks: 6,
+      band: "及格",
+      feedback: "能读出大部分内容，但准确度需要加强。"
+    };
+  }
+
+  return {
+    marks: 4,
+    band: "需加强",
+    feedback: "错读、漏读较多，需要分句练习。"
+  };
+}
+
+function resetAll() {
+  document.getElementById("transcript").value = "";
+  document.getElementById("accuracy").innerText = "0%";
+  document.getElementById("score").innerText = "0";
+  document.getElementById("band").innerText = "-";
+  document.getElementById("errors").innerText = "0";
+  document.getElementById("feedback").innerText = "No feedback yet.";
+  document.getElementById("expectedText").innerText = "";
+  document.getElementById("spokenText").innerText = "";
+  document.getElementById("recordingStatus").innerHTML = "";
+  setPill("Ready");
+  document.getElementById("startBtn").disabled = false;
+  document.getElementById("stopBtn").disabled = true;
+}
+</script>
+
+</body>
+</html>
